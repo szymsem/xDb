@@ -15,6 +15,7 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     email = Column(String, unique=True, index=True)
+    role = Column(String, default="user") 
 
 # Tworzenie tabeli w bazie danych
 Base.metadata.create_all(bind=engine)

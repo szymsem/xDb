@@ -3,18 +3,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from models.user import SessionLocal
-from crud import get_user, create_user, verify_password
-from auth import create_access_token
+from db import get_db
+from crud import get_user, create_user, verify_password, update_user_role
+from auth import create_access_token,get_current_user, require_role
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 @router.post("/register")
 def register(username: str, password: str, db: Session = Depends(get_db)):
@@ -30,3 +26,29 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         raise HTTPException(status_code=401, detail="Invalid credentials")
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+@router.get("/admin")
+def admin_endpoint(user = Depends(require_role("admin"))):
+    """
+    Endpoint dostępny tylko dla administratorów.
+    """
+    return {"message": "Welcome, admin!"}
+
+@router.get("/user")
+def user_endpoint(user = Depends(require_role("user"))):
+    """
+    Endpoint dostępny tylko dla zwykłych użytkowników.
+    """
+    return {"message": f"Welcome, {user.username}!"}
+@router.put("/user/{username}/role")
+
+def change_user_role(
+    username: str, new_role: str, db: Session = Depends(get_db), admin=Depends(require_role("admin"))
+):
+    """
+    Endpoint do zmiany rangi użytkownika. Dostępny tylko dla administratorów.
+    """
+    user = get_user(db, username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    update_user_role(db, username, new_role)
+    return {"message": f"Role of user {username} has been updated to {new_role}"}
