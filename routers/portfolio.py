@@ -1,8 +1,9 @@
-# portfolio.py
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 
+from binance_service import get_binance_supported_currencies
 from crud import update_user_balance
 from models.user import Portfolio, PortfolioAsset, User, CurrencyBalance, Account
 from db import get_db
@@ -48,7 +49,6 @@ def buy_asset(
 
     total_cost = amount * price
 
-    # Sprawdź balans w walucie płatności (zaktualizowane wywołanie)
     payment_balance = db.query(CurrencyBalance).filter(
         CurrencyBalance.user_id == current_user.id,
         CurrencyBalance.currency == payment_currency
@@ -162,13 +162,16 @@ def get_portfolio_details(
 
 
 @router.get("/portfolio/currencies")
-def get_supported_currencies():
-    """Zwraca listę obsługiwanych walut"""
-    return {
-        "crypto": ["BTC", "ETH", "BNB", "XRP"],
-        "fiat": ["USD", "EUR", "PLN", "GBP"],
-        "stocks": ["AAPL", "TSLA", "AMZN"]
-    }
+async def get_supported_currencies():
+    """Zwraca listę walut wspieranych przez Binance"""
+    try:
+        currencies = get_binance_supported_currencies()
+        return currencies
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch currencies from Binance: {str(e)}"
+        )
 
 
 @router.get("/portfolio/{portfolio_id}/value")
@@ -211,13 +214,19 @@ def create_account(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    supported_currencies = {
-        "crypto": ["BTC", "ETH", "BNB", "XRP"],
-        "fiat": ["USD", "EUR", "PLN", "GBP"]
-    }
+    # pobiera waluty i je normalizuje (duze litery)
+    supported_currencies = [c.upper() for c in get_binance_supported_currencies()]
+    requested_currency = currency.upper()
 
-    if currency not in [c for group in supported_currencies.values() for c in group]:
-        raise HTTPException(status_code=400, detail="Unsupported currency")
+    if requested_currency not in supported_currencies:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Unsupported currency",
+                "requested_currency": requested_currency,
+                "supported_currencies": supported_currencies
+            }
+        )
 
     # sprawdza czy konto w podanej walucie juz istnieje
     existing_account = db.query(Account).filter(

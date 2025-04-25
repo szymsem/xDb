@@ -1,9 +1,8 @@
-# main.py
+
 from fastapi import FastAPI
 from db import init_db
 from routers import crypto_history, crypto_websocket, auth, portfolio
 
-# Inicjalizuj bazę danych
 init_db()
 
 app = FastAPI()
