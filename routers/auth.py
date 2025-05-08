@@ -2,9 +2,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from models.user import SessionLocal
+from models.user import SessionLocal, CurrencyBalance, User
 from db import get_db
-from crud import get_user, create_user, verify_password, update_user_role
+from crud import get_user, create_user, verify_password, update_user_role, create_user_balance, pwd_context
 from auth import create_access_token,get_current_user, require_role
 
 router = APIRouter()
@@ -16,8 +16,26 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 def register(username: str, password: str, db: Session = Depends(get_db)):
     if get_user(db, username):
         raise HTTPException(status_code=400, detail="Username already registered")
-    create_user(db, username, password)
-    return {"message": "User registered successfully"}
+    user = User(
+        username=username,
+        hashed_password=pwd_context.hash(password),
+        role="user"
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    db.add(CurrencyBalance(
+        user_id=user.id,
+        currency="USD",
+        amount=1000.00  # balans startowy ( tylko na potrzeby testow)
+    ))
+    db.add(CurrencyBalance(
+        user_id=user.id,
+        currency="EUR",
+        amount=0.00
+    ))
+    db.commit()
+    return {"message": "Registration succesfull"}
 
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

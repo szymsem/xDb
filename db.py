@@ -1,4 +1,10 @@
-from models.user import SessionLocal
+
+from sqlalchemy.orm import sessionmaker
+from models.user import Base, engine, SessionLocal
+
+def init_db():
+    """Inicjalizuje bazę danych i tworzy tabele"""
+    Base.metadata.create_all(bind=engine)
 
 def get_db():
     """
@@ -9,3 +15,5 @@ def get_db():
         yield db
     finally:
         db.close()
+
+init_db()

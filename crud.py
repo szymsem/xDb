@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
-from models.user import User
+from models.user import User, CurrencyBalance
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -24,3 +24,33 @@ def update_user_role(db: Session, username: str, new_role: str):
         db.commit()
         db.refresh(user)
     return user
+
+
+def get_user_balance(db: Session, user_id: int, currency: str ):
+    return db.query(CurrencyBalance).filter(
+        CurrencyBalance.user_id == user_id,
+        CurrencyBalance.currency == currency
+    ).first()
+
+
+def create_user_balance(db: Session, user_id: int, currency: str, initial_amount: float = 0.0):
+    balance = CurrencyBalance(
+        user_id=user_id,
+        currency=currency,
+        amount=initial_amount
+    )
+    db.add(balance)
+    db.commit()
+    db.refresh(balance)
+    return balance
+
+
+def update_user_balance(db: Session, user_id: int, currency: str, amount_change: float):
+    balance = get_user_balance(db, user_id, currency)
+    if not balance:
+        balance = create_user_balance(db, user_id, currency)
+
+    balance.amount += amount_change
+    db.commit()
+    db.refresh(balance)
+    return balance
