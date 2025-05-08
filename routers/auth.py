@@ -35,6 +35,7 @@ def register(username: str, password: str, db: Session = Depends(get_db)):
         amount=0.00
     ))
     db.commit()
+    return {"message": "Registration succesfull"}
 
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

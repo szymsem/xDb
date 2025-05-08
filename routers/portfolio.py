@@ -1,3 +1,5 @@
+import asyncio
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -5,15 +7,15 @@ from typing import List
 
 from binance_service import get_binance_supported_currencies
 from crud import update_user_balance
-from models.user import Portfolio, PortfolioAsset, User, CurrencyBalance, Account
+from models.user import Portfolio, PortfolioAsset, User, CurrencyBalance, Order, OrderType, OrderStatus
 from db import get_db
 from auth import get_current_user
 
 router = APIRouter()
-router = APIRouter()
 
 @router.post("/portfolios/")
 def create_portfolio(name: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Tworzy portfel dla uzytkownika"""
     db_portfolio = Portfolio(name=name, user_id=current_user.id)
     db.add(db_portfolio)
     db.commit()
@@ -23,6 +25,7 @@ def create_portfolio(name: str, db: Session = Depends(get_db), current_user: Use
 
 @router.get("/portfolios/", response_model=List[dict])
 def get_portfolios(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Wyswietla portfele uzytkownika"""
     portfolios = db.query(Portfolio).filter(Portfolio.user_id == current_user.id).all()
     return [{"id": p.id, "name": p.name} for p in portfolios]
 
@@ -38,7 +41,8 @@ def buy_asset(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    """Kupuje asset płacąc w określonej walucie"""
+    """Kupuje assety do portfela"""
+    #sprawdza czy portfel istnieje i nalezy do uzytkownika
     portfolio = db.query(Portfolio).filter(
         Portfolio.id == portfolio_id,
         Portfolio.user_id == current_user.id
@@ -65,7 +69,7 @@ def buy_asset(
         PortfolioAsset.symbol == symbol,
         PortfolioAsset.currency_type == currency_type
     ).first()
-
+        # dodaje nowy asset lub aktualizuje istniejacy
     if asset:
         new_amount = asset.amount + amount
         new_avg_price = ((asset.amount * asset.buy_price) + (amount * price)) / new_amount
@@ -90,45 +94,6 @@ def buy_asset(
         "new_balance": payment_balance.amount,
         "currency": payment_currency
     }
-@router.post("/portfolios/{portfolio_id}/sell")
-def sell_asset(
-    portfolio_id: int,
-    symbol: str,
-    currency_type: str,
-    amount: float,
-    price: float,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    # sprawdza czy portfolio nalezy do uzytkownika
-    portfolio = db.query(Portfolio).filter(
-        Portfolio.id == portfolio_id,
-        Portfolio.user_id == current_user.id
-    ).first()
-
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-
-    # znajduje asset
-    asset = db.query(PortfolioAsset).filter(
-        PortfolioAsset.portfolio_id == portfolio_id,
-        PortfolioAsset.symbol == symbol
-    ).first()
-
-    if not asset or asset.amount < amount:
-        raise HTTPException(status_code=400, detail="Insufficient assets")
-
-    # oblicza zysk i aktualizuje balans
-    profit = amount * price
-    current_user.balance += profit
-
-    # aktualizuje assety
-    asset.amount -= amount
-    if asset.amount <= 0:
-        db.delete(asset)
-
-    db.commit()
-    return {"message": "Asset sold successfully"}
 
 
 @router.get("/portfolios/{portfolio_id}")
@@ -207,113 +172,6 @@ def get_portfolio_value(
     }
 
 
-@router.post("/accounts/create")
-def create_account(
-        currency: str,
-        initial_balance: float = 0.0,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
-):
-    # pobiera waluty i je normalizuje (duze litery)
-    supported_currencies = [c.upper() for c in get_binance_supported_currencies()]
-    requested_currency = currency.upper()
-
-    if requested_currency not in supported_currencies:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "Unsupported currency",
-                "requested_currency": requested_currency,
-                "supported_currencies": supported_currencies
-            }
-        )
-
-    # sprawdza czy konto w podanej walucie juz istnieje
-    existing_account = db.query(Account).filter(
-        Account.user_id == current_user.id,
-        Account.currency == currency
-    ).first()
-
-    if existing_account:
-        raise HTTPException(status_code=400, detail="Account in this currency already exists")
-
-    new_account = Account(
-        user_id=current_user.id,
-        currency=currency,
-        balance=initial_balance
-    )
-    db.add(new_account)
-    db.commit()
-    db.refresh(new_account)
-
-    return {
-        "message": "Account created successfully",
-        "account_id": new_account.id,
-        "currency": new_account.currency,
-        "balance": new_account.balance
-    }
-
-
-@router.get("/accounts")
-def get_user_accounts(
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
-):
-    """Zwraca listę wszystkich kont użytkownika"""
-    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
-
-    return {
-        "accounts": [{
-            "id": acc.id,
-            "currency": acc.currency,
-            "balance": acc.balance,
-            "created_at": acc.created_at.isoformat() if acc.created_at else None
-        } for acc in accounts],
-        "total_balance": sum(acc.balance for acc in accounts)
-    }
-
-@router.post("/balances/deposit")
-def deposit_funds(
-        currency: str,
-        amount: float,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
-):
-    """Wpłaca środki w określonej walucie"""
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be positive")
-
-    balance = update_user_balance(db, current_user.id, currency, amount)
-    return {
-        "message": "Funds deposited successfully",
-        "currency": currency,
-        "new_balance": balance.amount
-    }
-
-
-@router.post("/balances/withdraw")
-def withdraw_funds(
-        currency: str,
-        amount: float,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
-):
-    """Wypłaca środki z określonej waluty"""
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be positive")
-
-    balance = get_user_balance(db, current_user.id, currency)
-    if not balance or balance.amount < amount:
-        raise HTTPException(status_code=400, detail="Insufficient funds")
-
-    balance = update_user_balance(db, current_user.id, currency, -amount)
-    return {
-        "message": "Funds withdrawn successfully",
-        "currency": currency,
-        "new_balance": balance.amount
-    }
-
-
 @router.get("/balances")
 def get_all_balances(
         db: Session = Depends(get_db),
@@ -330,8 +188,39 @@ def get_all_balances(
     } for balance in balances]
 
 
+
+@router.post("/balances/deposit")
+async def deposit_funds(
+        currency: str,
+        amount: float,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Wpłaca środki w określonej walucie z walidacją"""
+    currencies = get_binance_supported_currencies()
+    if currency not in currencies:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Unsupported currency",
+                "supported_currencies": currencies,
+                "received_currency": currency
+            }
+        )
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+
+    balance = update_user_balance(db, current_user.id, currency, amount)
+    return {
+        "message": "Funds deposited successfully",
+        "currency": currency,
+        "new_balance": balance.amount
+    }
+
+
 @router.post("/balances/transfer")
-def transfer_between_currencies(
+async def transfer_between_currencies(
         source_currency: str,
         target_currency: str,
         amount: float,
@@ -339,7 +228,16 @@ def transfer_between_currencies(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    """Transferuje środki między walutami"""
+    """Transferuje środki między walutami z walidacją"""
+    currencies = get_binance_supported_currencies()
+
+    # Walidacja obu walut
+    for currency in [source_currency, target_currency]:
+        if currency.upper() not in currencies:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Currency {currency} not supported. Valid currencies: {currencies}"
+            )
 
     source_balance = db.query(CurrencyBalance).filter(
         CurrencyBalance.user_id == current_user.id,
@@ -352,7 +250,6 @@ def transfer_between_currencies(
             detail=f"Insufficient funds in {source_currency}"
         )
 
-    # znajduje lub tworzy docelowy balans
     target_balance = db.query(CurrencyBalance).filter(
         CurrencyBalance.user_id == current_user.id,
         CurrencyBalance.currency == target_currency
@@ -366,7 +263,6 @@ def transfer_between_currencies(
         )
         db.add(target_balance)
 
-    # transfer
     try:
         source_balance.amount -= amount
         target_balance.amount += amount * exchange_rate
@@ -386,6 +282,200 @@ def transfer_between_currencies(
         "target_new_balance": target_balance.amount,
         "exchange_rate": exchange_rate
     }
-@router.get("/user/balance")
-def get_user_balance(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return {"balance": current_user.balance}
+
+
+@router.post("/orders/create")
+async def create_order(
+        portfolio_id: int,
+        symbol: str,
+        order_type: OrderType,
+        amount: float,
+        price: float = None,  # None dla zleceń rynkowych
+        currency: str = "USD",
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Tworzy nowe zlecenie kupna/sprzedaży"""
+    # Walidacja portfela
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.id == portfolio_id,
+        Portfolio.user_id == current_user.id
+    ).first()
+    if not portfolio:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    # Walidacja waluty
+    currencies = get_binance_supported_currencies()
+    if currency not in currencies:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Unsupported currency",
+                "supported_currencies": currencies,
+                "received_currency": currency
+            }
+        )
+
+    # Tworzenie zlecenia
+    new_order = Order(
+        user_id=current_user.id,
+        portfolio_id=portfolio_id,
+        symbol=symbol,
+        order_type=order_type,
+        amount=amount,
+        price=price,
+        currency=currency,
+        status=OrderStatus.PENDING
+    )
+
+    db.add(new_order)
+    db.commit()
+    db.refresh(new_order)
+
+    # W tle uruchamiamy realizację zlecenia
+    asyncio.create_task(execute_order(new_order.id, db))
+
+    return {
+        "message": "Order created successfully",
+        "order_id": new_order.id,
+        "status": new_order.status.value
+    }
+
+
+async def execute_order(order_id: int, db: Session):
+    """Realizuje zlecenie w tle"""
+    from sqlalchemy.orm import sessionmaker
+    from db import SessionLocal
+
+    local_db = SessionLocal()
+    try:
+        order = local_db.query(Order).filter(Order.id == order_id).first()
+        if not order or order.status != OrderStatus.PENDING:
+            return
+
+        if order.order_type == OrderType.BUY:
+            # Logika kupna
+            total_cost = order.amount * (order.price or await get_current_market_price(order.symbol))
+
+            # Sprawdź saldo
+            balance = local_db.query(CurrencyBalance).filter(
+                CurrencyBalance.user_id == order.user_id,
+                CurrencyBalance.currency == order.currency
+            ).first()
+
+            if not balance or balance.amount < total_cost:
+                order.status = OrderStatus.FAILED
+                order.executed_at = datetime.utcnow()
+                local_db.commit()
+                return
+
+            # Realizacja kupna
+            balance.amount -= total_cost
+            asset = local_db.query(PortfolioAsset).filter(
+                PortfolioAsset.portfolio_id == order.portfolio_id,
+                PortfolioAsset.symbol == order.symbol
+            ).first()
+
+            if asset:
+                new_amount = asset.amount + order.amount
+                avg_price = ((asset.amount * asset.buy_price) + (order.amount * order.price)) / new_amount
+                asset.amount = new_amount
+                asset.buy_price = avg_price
+            else:
+                asset = PortfolioAsset(
+                    portfolio_id=order.portfolio_id,
+                    symbol=order.symbol,
+                    currency_type=order.currency,
+                    amount=order.amount,
+                    buy_price=order.price,
+                    buy_currency=order.currency
+                )
+                local_db.add(asset)
+
+            order.status = OrderStatus.COMPLETED
+
+        elif order.order_type == OrderType.SELL:
+            # Logika sprzedaży
+            asset = local_db.query(PortfolioAsset).filter(
+                PortfolioAsset.portfolio_id == order.portfolio_id,
+                PortfolioAsset.symbol == order.symbol
+            ).first()
+
+            if not asset or asset.amount < order.amount:
+                order.status = OrderStatus.FAILED
+                local_db.commit()
+                return
+
+            total_value = order.amount * (order.price or await get_current_market_price(order.symbol))
+
+            # Znajdź lub utwórz balans w walucie docelowej
+            balance = local_db.query(CurrencyBalance).filter(
+                CurrencyBalance.user_id == order.user_id,
+                CurrencyBalance.currency == order.currency
+            ).first()
+
+            if not balance:
+                balance = CurrencyBalance(
+                    user_id=order.user_id,
+                    currency=order.currency,
+                    amount=0.0
+                )
+                local_db.add(balance)
+
+            # Realizacja sprzedaży
+            asset.amount -= order.amount
+            if asset.amount <= 0:
+                local_db.delete(asset)
+
+            balance.amount += total_value
+            order.status = OrderStatus.COMPLETED
+
+        order.executed_at = datetime.utcnow()
+        local_db.commit()
+
+    except Exception as e:
+        print(f"Order execution failed: {e}")
+        if order:
+            order.status = OrderStatus.FAILED
+            local_db.commit()
+    finally:
+        local_db.close()
+
+
+async def get_current_market_price(symbol: str):
+    """Pobiera aktualną cenę rynkową z Binance"""
+    from binance import AsyncClient
+    client = await AsyncClient.create()
+    try:
+        ticker = await client.get_symbol_ticker(symbol=symbol)
+        return float(ticker['price'])
+    finally:
+        await client.close_connection()
+
+
+@router.get("/orders")
+def get_user_orders(
+        status: OrderStatus = None,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Pobiera listę zleceń użytkownika"""
+    query = db.query(Order).filter(Order.user_id == current_user.id)
+
+    if status:
+        query = query.filter(Order.status == status)
+
+    orders = query.order_by(Order.created_at.desc()).all()
+
+    return [{
+        "id": o.id,
+        "symbol": o.symbol,
+        "type": o.order_type.value,
+        "amount": o.amount,
+        "price": o.price,
+        "currency": o.currency,
+        "status": o.status.value,
+        "created_at": o.created_at.isoformat(),
+        "executed_at": o.executed_at.isoformat() if o.executed_at else None
+    } for o in orders]
+

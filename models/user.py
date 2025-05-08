@@ -1,9 +1,10 @@
 # user.py (rozszerzenie)
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Float, create_engine, ForeignKey, DateTime, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, create_engine, ForeignKey, DateTime, UniqueConstraint, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+from enum import Enum as PyEnum
 
 DATABASE_URL = "sqlite:///./users.db"
 
@@ -23,6 +24,7 @@ class User(Base):
     portfolios = relationship("Portfolio", back_populates="owner")
     currency_balances = relationship("CurrencyBalance", back_populates="user")
     accounts = relationship("Account", back_populates="user")
+    orders = relationship("Order", back_populates="user")
 
 class CurrencyBalance(Base):
     __tablename__ = "currency_balances"
@@ -70,6 +72,37 @@ class PortfolioAsset(Base):
     buy_price = Column(Float)
     buy_currency = Column(String)  # W jakiej walucie był zakup (np. "USD")
     portfolio = relationship("Portfolio", back_populates="assets")
+
+
+class OrderType(PyEnum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+class OrderStatus(PyEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"))
+    symbol = Column(String)
+    order_type = Column(Enum(OrderType))
+    amount = Column(Float)
+    price = Column(Float)  # Cena zlecenia (może być None dla zleceń rynkowych)
+    currency = Column(String)  # Waluta płatności
+    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    executed_at = Column(DateTime)
+
+    user = relationship("User", back_populates="orders")
+    portfolio = relationship("Portfolio")
 
 
 # Tworzenie tabel w bazie danych
