@@ -25,6 +25,7 @@ class User(Base):
     currency_balances = relationship("CurrencyBalance", back_populates="user")
     accounts = relationship("Account", back_populates="user")
     orders = relationship("Order", back_populates="user")
+    orderFuture = relationship("OrderFuture", back_populates="user")
 
 class CurrencyBalance(Base):
     __tablename__ = "currency_balances"
@@ -104,6 +105,34 @@ class Order(Base):
     user = relationship("User", back_populates="orders")
     portfolio = relationship("Portfolio")
 
+
+
+
+class AdvancedOrderType(PyEnum):
+    LIMIT = "limit"
+    STOP_LIMIT = "stop_limit"
+    STOP_MARKET = "stop_market"
+    TAKE_PROFIT_LIMIT = "take_profit_limit"
+    TAKE_PROFIT_MARKET = "take_profit_market"
+
+class OrderFuture(Base):
+    __tablename__ = "orderFuture"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    portfolio_id = Column(Integer, ForeignKey("portfolios.id"))
+    symbol = Column(String)
+    order_type = Column(Enum(AdvancedOrderType))
+    amount = Column(Float)
+    price = Column(Float, nullable=True)  # Cena docelowa (dla limit/stop-limit)
+    stop_price = Column(Float, nullable=True)  # Cena aktywacji (dla stop-limit/take-profit)
+    currency = Column(String)  # Waluta płatności
+    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    executed_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="orderFuture")
+    portfolio = relationship("Portfolio")
 
 # Tworzenie tabel w bazie danych
 Base.metadata.create_all(bind=engine)
