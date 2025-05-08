@@ -266,8 +266,6 @@ async def create_order(
     db.commit()
     db.refresh(new_order)
 
-    # W tle uruchamiamy realizację zlecenia
-    asyncio.create_task(execute_order(new_order.id, db))
 
     return {
         "message": "Order created successfully",
@@ -276,8 +274,115 @@ async def create_order(
     }
 
 
+@router.put("/orders/{order_id}/modify")
+async def modify_order(
+        order_id: int,
+        new_amount: float = None,
+        new_price: float = None,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Modyfikuje istniejące zlecenie (tylko dla zleceń w statusie PENDING).
+    Można zmienić ilość (amount) i/lub cenę (price).
+    """
+    # Pobierz zlecenie
+    order = db.query(Order).filter(
+        Order.id == order_id,
+        Order.user_id == current_user.id
+    ).first()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.status != OrderStatus.PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail="Only PENDING orders can be modified"
+        )
+
+    # Walidacja nowych wartości
+    if new_amount is not None and new_amount <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Amount must be positive"
+        )
+
+    if new_price is not None and new_price <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Price must be positive"
+        )
+
+    # Aktualizacja zlecenia
+    try:
+        if new_amount is not None:
+            order.amount = new_amount
+
+        if new_price is not None:
+            order.price = new_price
+
+        db.commit()
+        db.refresh(order)
+
+        return {
+            "message": "Order modified successfully",
+            "order_id": order.id,
+            "new_amount": order.amount,
+            "new_price": order.price,
+            "status": order.status.value
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to modify order: {str(e)}"
+        )
+
+
+@router.put("/orders/{order_id}/cancel")
+async def cancel_order(
+        order_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Anuluje zlecenie (tylko dla zleceń w statusie PENDING).
+    """
+    # Pobierz zlecenie
+    order = db.query(Order).filter(
+        Order.id == order_id,
+        Order.user_id == current_user.id
+    ).first()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.status != OrderStatus.PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail="Only PENDING orders can be cancelled"
+        )
+
+    try:
+        order.status = OrderStatus.CANCELLED
+        order.executed_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "message": "Order cancelled successfully",
+            "order_id": order.id,
+            "status": order.status.value
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to cancel order: {str(e)}"
+        )
+
+"""
 async def execute_order(order_id: int, db: Session):
-    """Realizuje zlecenie w tle"""
     from sqlalchemy.orm import sessionmaker
     from db import SessionLocal
 
@@ -374,7 +479,133 @@ async def execute_order(order_id: int, db: Session):
             local_db.commit()
     finally:
         local_db.close()
+"""
 
+
+@router.post("/orders/{order_id}/execute")
+async def execute_order(
+        order_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """Ręczne zatwierdzanie i wykonanie zlecenia"""
+    order = db.query(Order).filter(
+        Order.id == order_id,
+        Order.user_id == current_user.id
+    ).first()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.status != OrderStatus.PENDING:
+        raise HTTPException(
+            status_code=400,
+            detail="Only PENDING orders can be executed"
+        )
+
+    try:
+        if order.order_type == OrderType.BUY:
+            # Logika kupna
+            current_price = await get_current_market_price(order.symbol)
+            total_cost = order.amount * (order.price or current_price)
+
+            # Sprawdź saldo
+            balance = db.query(CurrencyBalance).filter(
+                CurrencyBalance.user_id == order.user_id,
+                CurrencyBalance.currency == order.currency
+            ).first()
+
+            if not balance or balance.amount < total_cost:
+                order.status = OrderStatus.FAILED
+                order.executed_at = datetime.utcnow()
+                db.commit()
+                raise HTTPException(
+                    status_code=400,
+                    detail="Insufficient funds to execute this order"
+                )
+
+            # Realizacja kupna
+            balance.amount -= total_cost
+            asset = db.query(PortfolioAsset).filter(
+                PortfolioAsset.portfolio_id == order.portfolio_id,
+                PortfolioAsset.symbol == order.symbol
+            ).first()
+
+            if asset:
+                new_amount = asset.amount + order.amount
+                avg_price = ((asset.amount * asset.buy_price) + (
+                            order.amount * (order.price or current_price))) / new_amount
+                asset.amount = new_amount
+                asset.buy_price = avg_price
+            else:
+                asset = PortfolioAsset(
+                    portfolio_id=order.portfolio_id,
+                    symbol=order.symbol,
+                    currency_type="crypto",  # Załóżmy, że to krypto
+                    amount=order.amount,
+                    buy_price=order.price or current_price,
+                    buy_currency=order.currency
+                )
+                db.add(asset)
+
+            order.status = OrderStatus.COMPLETED
+
+        elif order.order_type == OrderType.SELL:
+            # Logika sprzedaży
+            asset = db.query(PortfolioAsset).filter(
+                PortfolioAsset.portfolio_id == order.portfolio_id,
+                PortfolioAsset.symbol == order.symbol
+            ).first()
+
+            if not asset or asset.amount < order.amount:
+                order.status = OrderStatus.FAILED
+                db.commit()
+                raise HTTPException(
+                    status_code=400,
+                    detail="Insufficient assets to execute this order"
+                )
+
+            current_price = await get_current_market_price(order.symbol)
+            total_value = order.amount * (order.price or current_price)
+
+            # Znajdź lub utwórz balans w walucie docelowej
+            balance = db.query(CurrencyBalance).filter(
+                CurrencyBalance.user_id == order.user_id,
+                CurrencyBalance.currency == order.currency
+            ).first()
+
+            if not balance:
+                balance = CurrencyBalance(
+                    user_id=order.user_id,
+                    currency=order.currency,
+                    amount=0.0
+                )
+                db.add(balance)
+
+            # Realizacja sprzedaży
+            asset.amount -= order.amount
+            if asset.amount <= 0:
+                db.delete(asset)
+
+            balance.amount += total_value
+            order.status = OrderStatus.COMPLETED
+
+        order.executed_at = datetime.utcnow()
+        db.commit()
+
+        return {
+            "message": "Order executed successfully",
+            "order_id": order.id,
+            "status": order.status.value,
+            "executed_at": order.executed_at.isoformat()
+        }
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Order execution failed: {str(e)}"
+        )
 
 async def get_current_market_price(symbol: str):
     """Pobiera aktualną cenę rynkową z Binance"""
