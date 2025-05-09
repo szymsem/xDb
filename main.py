@@ -1,6 +1,8 @@
 
 from fastapi import FastAPI
-from db import init_db
+
+from services.orders_service import process_orders_in_background
+from services.db import init_db
 from routers import crypto_history, crypto_websocket, auth, portfolio, orders
 import asyncio
 
@@ -16,7 +18,7 @@ app.include_router(orders.router, prefix="/api", tags=["Orders"])
 
 @app.on_event("startup")
 async def startup_event():
-    asyncio.create_task(orders.process_orders_in_background())
+    asyncio.create_task(process_orders_in_background())
 
 @app.get("/")
 def root() -> dict[str, str]:

@@ -1,15 +1,12 @@
-import asyncio
-from datetime import datetime, timedelta
-
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 from typing import List
 
-from binance_service import get_binance_supported_currencies
-from crud import update_user_balance
-from models.user import Portfolio, PortfolioAsset, User, CurrencyBalance, Order, OrderType, OrderStatus, SessionLocal
-from db import get_db
-from auth import get_current_user
+from services.binance_service import get_binance_supported_currencies
+from services.crud import update_user_balance
+from models.user import Portfolio, PortfolioAsset, User, CurrencyBalance
+from services.db import get_db
+from services.auth import get_current_user, require_role
 
 router = APIRouter()
 

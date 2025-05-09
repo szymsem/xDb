@@ -3,8 +3,8 @@ from jose import JWTError, jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from db import get_db
-from crud import get_user
+from services.db import get_db
+from services.crud import get_user
 from fastapi.security import OAuth2
 from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel  # Dodano brakujący import
 
