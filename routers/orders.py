@@ -81,8 +81,6 @@ async def create_order(
         "current_price": current_price,
     }
 
-<<<<<<< HEAD
-=======
 @router.post("/orders/create_advanced_order")
 async def create_advanced_order(
         portfolio_id: int,
@@ -126,33 +124,18 @@ async def create_advanced_order(
         "order_type": new_order.order_type.value,
     }
 
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
 
 @router.put("/orders/{order_id}/modify")
 async def modify_order(
         order_id: int,
-<<<<<<< HEAD
-        new_amount: float = None,
-        new_price: float = None,
-=======
         order_type: str = "advanced",  # 'market' lub 'advanced'
         new_amount: float = None,
         new_price: float = None,
         new_stop_price: float = None,  # Tylko dla zleceń advanced
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
     """
-<<<<<<< HEAD
-    Modyfikuje istniejące zlecenie (tylko dla zleceń w statusie PENDING).
-    Można zmienić ilość (amount) i/lub cenę (price).
-    """
-    order = db.query(Order).filter(
-        Order.id == order_id,
-        Order.user_id == current_user.id
-    ).first()
-=======
     Modyfikuje istniejące zlecenie (tylko dla zlecen  PENDING).
     """
     if order_type == "market":
@@ -170,7 +153,6 @@ async def modify_order(
             status_code=400,
             detail="Invalid order_type. Use 'market' or 'advanced'"
         )
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -181,10 +163,7 @@ async def modify_order(
             detail="Only PENDING orders can be modified"
         )
 
-<<<<<<< HEAD
-=======
     # Walidacja parametrów
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
     if new_amount is not None and new_amount <= 0:
         raise HTTPException(
             status_code=400,
@@ -197,16 +176,12 @@ async def modify_order(
             detail="Price must be positive"
         )
 
-<<<<<<< HEAD
-    # aktualizacja zlecenia
-=======
     if order_type == "advanced" and new_stop_price is not None and new_stop_price <= 0:
         raise HTTPException(
             status_code=400,
             detail="Stop price must be positive"
         )
 
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
     try:
         if new_amount is not None:
             order.amount = new_amount
@@ -214,18 +189,6 @@ async def modify_order(
         if new_price is not None:
             order.price = new_price
 
-<<<<<<< HEAD
-        db.commit()
-        db.refresh(order)
-
-        return {
-            "message": "Order modified successfully",
-            "order_id": order.id,
-            "new_amount": order.amount,
-            "new_price": order.price,
-            "status": order.status.value
-        }
-=======
         if order_type == "advanced" and new_stop_price is not None:
             order.stop_price = new_stop_price
 
@@ -248,7 +211,6 @@ async def modify_order(
 
         return response
 
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
     except Exception as e:
         db.rollback()
         raise HTTPException(
@@ -256,22 +218,6 @@ async def modify_order(
             detail=f"Failed to modify order: {str(e)}"
         )
 
-<<<<<<< HEAD
-
-@router.put("/orders/{order_id}/cancel")
-async def cancel_order(
-        order_id: int,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
-):
-    """
-    Anuluje zlecenie (tylko dla zleceń w statusie PENDING).
-    """
-    order = db.query(Order).filter(
-        Order.id == order_id,
-        Order.user_id == current_user.id
-    ).first()
-=======
 @router.put("/orders/{order_id}/cancel")
 async def cancel_order(
     order_id: int,
@@ -297,7 +243,6 @@ async def cancel_order(
             status_code=400,
             detail="Invalid order_type. Use 'market' or 'advanced'"
         )
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -316,10 +261,7 @@ async def cancel_order(
         return {
             "message": "Order cancelled successfully",
             "order_id": order.id,
-<<<<<<< HEAD
-=======
             "type": order_type,
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
             "status": order.status.value
         }
     except Exception as e:
@@ -331,14 +273,7 @@ async def cancel_order(
 
 
 async def execute_market_order(order_id: int):
-<<<<<<< HEAD
-    """Główna funkcja wykonująca zlecenie"""
-
-
-
-=======
     """Główna funkcja wykonująca zlecenie market"""
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
     db = SessionLocal()
     try:
         order = db.query(Order).filter(Order.id == order_id).first()
@@ -348,11 +283,7 @@ async def execute_market_order(order_id: int):
         if order.order_type == OrderType.BUY:
             await execute_buy(order, db)
         elif order.order_type == OrderType.SELL:
-<<<<<<< HEAD
-            await execute_sell(order, db)
-=======
             await execute_market_sell(order, db)
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
 
     except Exception as e:
         print(f"Order execution error: {str(e)}")
@@ -363,32 +294,6 @@ async def execute_market_order(order_id: int):
 @router.get("/orders")
 def get_user_orders(
         status: OrderStatus = None,
-<<<<<<< HEAD
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
-):
-    """Pobiera listę zleceń użytkownika"""
-    query = db.query(Order).filter(Order.user_id == current_user.id)
-
-    if status:
-        query = query.filter(Order.status == status)
-
-    orders = query.order_by(Order.created_at.desc()).all()
-
-    return [{
-        "id": o.id,
-        "symbol": o.symbol,
-        "type": o.order_type.value,
-        "amount": o.amount,
-        "price": o.price,
-        "currency": o.currency,
-        "status": o.status.value,
-        "created_at": o.created_at.isoformat(),
-        "executed_at": o.executed_at.isoformat() if o.executed_at else None
-    } for o in orders]
-
-
-=======
         advanced: bool = False,  # Nowy parametr do filtrowania typów zleceń
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
@@ -448,7 +353,6 @@ def get_user_orders(
     result.sort(key=lambda x: x['created_at'], reverse=True)
 
     return result
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
 async def execute_buy(order: Order, db: Session) -> None:
     """Realizuje zlecenie kupna"""
     try:
@@ -540,8 +444,6 @@ async def execute_sell(order: Order, db: Session) -> None:
         order.price = current_price
         db.commit()
 
-<<<<<<< HEAD
-=======
     except Exception as e: # mozna zrobic dekoratora autorollback, value error nie jest potrzebny
         db.rollback()
         raise ValueError(f"Sell execution failed: {str(e)}")
@@ -586,7 +488,6 @@ async def execute_market_sell(order: Order, db: Session) -> None:
         order.price = current_price
         db.commit()
 
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
     except Exception as e:
         db.rollback()
         raise ValueError(f"Sell execution failed: {str(e)}")
@@ -661,51 +562,6 @@ async def process_order(order, current_price, db: Session):
         return False
 
 
-<<<<<<< HEAD
-@router.post("/orders/create_advanced_order")
-async def create_advanced_order(
-        portfolio_id: int,
-        symbol: str,
-        order_type: AdvancedOrderType,
-        amount: float,
-        price: float = None,
-        stop_price: float = None,
-        currency: str = "USDT",
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
-):
-    """Tworzy zaawansowane zlecenie (limit, stop-limit, take-profit itp.)"""
-    portfolio = db.query(Portfolio).filter(
-        Portfolio.id == portfolio_id,
-        Portfolio.user_id == current_user.id
-    ).first()
-    if not portfolio:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
-
-    new_order = OrderFuture(
-        user_id=current_user.id,
-        portfolio_id=portfolio_id,
-        symbol=symbol,
-        order_type=order_type,
-        amount=amount,
-        price=price,
-        stop_price=stop_price,
-        currency=currency,
-        status=OrderStatus.PENDING
-    )
-
-    db.add(new_order)
-    db.commit()
-    db.refresh(new_order)
-
-    return {
-        "message": "Advanced order created successfully",
-        "order_id": new_order.id,
-        "status": new_order.status.value,
-        "order_type": new_order.order_type.value,
-    }
-=======
->>>>>>> 3e28cbf0f6737f97c58f14b4657165194780a766
 
 
 async def process_orders_in_background():
