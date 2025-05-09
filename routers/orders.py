@@ -93,7 +93,7 @@ async def create_advanced_order(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    """Tworzy zaawansowane zlecenie (limit, stop-limit, take-profit itp.)"""
+    """Tworzy zlecenie typu limit, stop-limit, take-profit itp"""
     portfolio = db.query(Portfolio).filter(
         Portfolio.id == portfolio_id,
         Portfolio.user_id == current_user.id
@@ -136,12 +136,7 @@ async def modify_order(
         current_user: User = Depends(get_current_user)
 ):
     """
-    Modyfikuje istniejące zlecenie (tylko dla zleceń w statusie PENDING).
-    :param order_id: ID zlecenia
-    :param order_type: Typ zlecenia ('market' lub 'advanced')
-    :param new_amount: Nowa ilość
-    :param new_price: Nowa cena (dla market i advanced)
-    :param new_stop_price: Nowa cena stop (tylko dla advanced)
+    Modyfikuje istniejące zlecenie (tylko dla zlecen  PENDING).
     """
     if order_type == "market":
         order = db.query(Order).filter(
@@ -231,9 +226,7 @@ async def cancel_order(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Anuluje zlecenie (tylko dla zleceń w statusie PENDING).
-    :param order_id: ID zlecenia
-    :param order_type: Typ zlecenia ('market' lub 'advanced')
+    Anuluje zlecenie (tylko dla zlecen PENDING).
     """
     if order_type == "market":
         order = db.query(Order).filter(
@@ -280,10 +273,7 @@ async def cancel_order(
 
 
 async def execute_market_order(order_id: int):
-    """Główna funkcja wykonująca zlecenie"""
-
-
-
+    """Główna funkcja wykonująca zlecenie market"""
     db = SessionLocal()
     try:
         order = db.query(Order).filter(Order.id == order_id).first()
@@ -454,7 +444,7 @@ async def execute_sell(order: Order, db: Session) -> None:
         order.price = current_price
         db.commit()
 
-    except Exception as e:
+    except Exception as e: # mozna zrobic dekoratora autorollback, value error nie jest potrzebny
         db.rollback()
         raise ValueError(f"Sell execution failed: {str(e)}")
 

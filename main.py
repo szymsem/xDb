@@ -16,9 +16,6 @@ app.include_router(orders.router, prefix="/api", tags=["Orders"])
 
 @app.on_event("startup")
 async def startup_event():
-    """
-    Uruchamia funkcję przetwarzającą zlecenia w tle podczas startu aplikacji.
-    """
     asyncio.create_task(orders.process_orders_in_background())
 
 @app.get("/")
