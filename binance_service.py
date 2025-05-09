@@ -1,5 +1,5 @@
 from binance.client import Client
-
+from binance import AsyncClient
 
 def get_binance_supported_currencies():
     client = Client()
@@ -17,3 +17,13 @@ def get_binance_supported_currencies():
     except Exception as e:
         print(f"Error fetching currencies from Binance: {e}")
         return []
+
+async def get_current_market_price(symbol: str):
+    """Pobiera aktualną cenę rynkową z Binance"""
+
+    client = await AsyncClient.create()
+    try:
+        ticker = await client.get_symbol_ticker(symbol=symbol)
+        return float(ticker['price'])
+    finally:
+        await client.close_connection()
