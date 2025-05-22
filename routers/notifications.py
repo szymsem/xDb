@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from models.user import User
-from auth import get_current_user
+from services.auth import get_current_user
 from services.notification_service import send_email_notification
 
 router = APIRouter()

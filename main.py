@@ -3,7 +3,7 @@ from fastapi import FastAPI
 
 from services.orders_service import process_orders_in_background
 from services.db import init_db
-from routers import crypto_history, crypto_websocket, auth, portfolio, orders
+from routers import crypto_history, crypto_websocket, auth, portfolio, orders, notifications
 import asyncio
 
 init_db()
@@ -15,7 +15,7 @@ app.include_router(crypto_websocket.router, prefix="/api", tags=["Crypto WebSock
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(portfolio.router, prefix="/api", tags=["Portfolios"])
 app.include_router(orders.router, prefix="/api", tags=["Orders"])
-app.include_router(orders.router, prefix="/api", tags=["Notifications"])
+app.include_router(notifications.router, prefix="/api", tags=["Notifications"])
 
 
 @app.on_event("startup")

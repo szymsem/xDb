@@ -103,6 +103,7 @@ async def execute_sell(order: Order, db: Session) -> None:
         order.executed_at = datetime.utcnow()
         order.price = current_price
         db.commit()
+        await notify_order_execution(order.user, order)
 
     except Exception as e: # mozna zrobic dekoratora autorollback, value error nie jest potrzebny
         db.rollback()
@@ -148,6 +149,7 @@ async def execute_market_sell(order: Order, db: Session) -> None:
         order.executed_at = datetime.utcnow()
         order.price = current_price
         db.commit()
+        await notify_order_execution(order.user, order)
 
     except Exception as e:
         db.rollback()
