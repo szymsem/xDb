@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from binance.client import Client
 import json
 import redis.asyncio as redis  
+from services.logger import logger
 
 router = APIRouter()
 client = Client()
@@ -21,7 +22,7 @@ async def get_from_cache(key: str):
             print(f"[CACHE MISS] Klucz: {key}")  
         return data
     except Exception as e:
-        print(f"Redis error (get): {e}")
+        logger.error(f"failed to get cache {str(e)}", exc_info=True)
         return None
 
 async def set_to_cache(key: str, value: str, expire: int = 3600):
@@ -32,8 +33,7 @@ async def set_to_cache(key: str, value: str, expire: int = 3600):
         await redis_client.set(key, value, ex=expire)
         print(f"[CACHE SET] Klucz: {key}, Czas wygaśnięcia: {expire}s")  
     except Exception as e:
-        print(f"Redis error (set): {e}")
-
+        logger.error(f"redis error: {str(e)}", exc_info=True)
 @router.get("/crypto/history/{symbol}")
 async def get_crypto_history(symbol: str, interval: str = "1d", limit: int = 100):
     """
@@ -56,5 +56,5 @@ async def get_crypto_history(symbol: str, interval: str = "1d", limit: int = 100
         print(f"[BINANCE] Dane dla {symbol} zapisane w cache.")  
         return {"symbol": symbol, "interval": interval, "data": klines}
     except Exception as e:
-        print(f"[ERROR] Błąd podczas pobierania danych z Binance: {e}")
+        logger.error(f"Error during download from Binance: {str(e)}",exc_info=True)
         return {"error": str(e)}

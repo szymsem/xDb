@@ -2,10 +2,12 @@ import asyncio
 from datetime import datetime
 
 from sqlalchemy.orm import Session
+from services.logger import logger
 
 from models.user import OrderFuture, OrderStatus, SessionLocal, AdvancedOrderType, CurrencyBalance, PortfolioAsset, \
     Order
 from services.binance_service import get_current_market_price
+from services.notification_service import notify_order_execution
 
 
 async def execute_buy(order: Order, db: Session) -> None:
@@ -53,8 +55,11 @@ async def execute_buy(order: Order, db: Session) -> None:
         order.price = current_price
         db.commit()
 
+        await notify_order_execution(order.user, order)
+
     except Exception as e:
         db.rollback()
+        logger.error(f"Buy execution failed: {str(e)}",exc_info=True)
         raise ValueError(f"Buy execution failed: {str(e)}")
 
 
@@ -101,6 +106,7 @@ async def execute_sell(order: Order, db: Session) -> None:
 
     except Exception as e: # mozna zrobic dekoratora autorollback, value error nie jest potrzebny
         db.rollback()
+        logger.error(f"Sell execution failed: {str(e)}",exc_info=True)
         raise ValueError(f"Sell execution failed: {str(e)}")
 
 async def execute_market_sell(order: Order, db: Session) -> None:
@@ -145,6 +151,7 @@ async def execute_market_sell(order: Order, db: Session) -> None:
 
     except Exception as e:
         db.rollback()
+        logger.error(f"Sell execution failed: {str(e)}",exc_info=True)
         raise ValueError(f"Sell execution failed: {str(e)}")
 
 
@@ -213,6 +220,7 @@ async def process_order(order, current_price, db: Session):
 
     except Exception as e:
         db.rollback()
+        logger.error(f"Processing order error: {str(e)}", exc_info=True)
         print(f"Error processing order {order.id}: {e}")
         return False
 
@@ -241,6 +249,7 @@ async def process_orders_in_background():
                     print(f"Order {order.id} not executed.")
 
         except Exception as e:
+            logger.error(f"Error processing orders: {str(e)}", exc_info=True) 
             print(f"Error processing orders: {e}")
         finally:
             db.close()

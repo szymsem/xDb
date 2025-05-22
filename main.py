@@ -15,6 +15,8 @@ app.include_router(crypto_websocket.router, prefix="/api", tags=["Crypto WebSock
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(portfolio.router, prefix="/api", tags=["Portfolios"])
 app.include_router(orders.router, prefix="/api", tags=["Orders"])
+app.include_router(orders.router, prefix="/api", tags=["Notifications"])
+
 
 @app.on_event("startup")
 async def startup_event():

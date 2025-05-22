@@ -10,6 +10,7 @@ from models.user import Portfolio, PortfolioAsset, User, CurrencyBalance, Order,
 from services.db import get_db
 from services.auth import get_current_user
 from services.orders_service import execute_market_sell, execute_buy
+from services.notification_service import notify_order_status_change, notify_order_execution
 
 router = APIRouter()
 
