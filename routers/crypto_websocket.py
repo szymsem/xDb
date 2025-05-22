@@ -1,5 +1,6 @@
 from fastapi import APIRouter, WebSocket
 from binance import AsyncClient, BinanceSocketManager
+from services.logger import logger
 import asyncio
 
 router = APIRouter()
@@ -22,7 +23,7 @@ async def crypto_websocket(websocket: WebSocket, symbol: str):
                 msg = await ticker_socket.recv()
                 await websocket.send_json(msg)
         except Exception as e:
-            print(f"WebSocket error: {e}")
+            logger.error(f"websocket error: {str(e)}",)
         finally:
             await client.close_connection()
             await websocket.close()

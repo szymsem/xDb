@@ -13,12 +13,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 
 @router.post("/register")
-def register(username: str, password: str, db: Session = Depends(get_db)):
+def register(username: str, password: str, email: str,  db: Session = Depends(get_db)):
     if get_user(db, username):
         raise HTTPException(status_code=400, detail="Username already registered")
     user = User(
         username=username,
         hashed_password=pwd_context.hash(password),
+        email = email,
         role="user"
     )
     db.add(user)
